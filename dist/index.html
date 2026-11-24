@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Interface SmartScanCargo para análise de imagens de raio X e HEMD.">
-  <title>SmartCargoV3 - revisão 04</title>
+  <title>SmartCargoV3 - revisão 05</title>
   <link rel="stylesheet" href="style.css?v=20260920-15">
   <style>
     /* Abas adicionais do SmartCargoV3; não altera o CSS principal. */
@@ -27,6 +27,16 @@
     .sc-original { display: block; }
     .sc-revision { display: block; color: #c1121f; margin-top: 5px; }
     .sc-red { color: #c1121f; }
+    .sc-choice { cursor: pointer; }
+    .sc-choice:hover td { background: #e0f2fe; }
+    .sc-choice.sc-selected td { background: #dbeafe; }
+    .sc-choice:focus-visible, .sc-option:focus-visible { outline: 2px solid #075985; outline-offset: -2px; }
+    .sc-option { display: block; cursor: pointer; border-radius: 4px; }
+    .sc-option.sc-selected-option { outline: 2px solid #075985; background: #bfdbfe; }
+    .sc-pending { padding: 10px 12px; margin: 8px 0; border: 1px solid #93c5fd; border-radius: 6px; background: #eff6ff; color: #0c4a6e; overflow-wrap: anywhere; }
+    .sc-pending[hidden] { display: none !important; }
+    .sc-pending button { margin-left: 10px; cursor: pointer; }
+    #reportText.sc-insert-ready:not(:disabled) { outline: 2px solid #075985; cursor: text; }
     @media (max-width: 600px) { .sc-tab { flex: 1; padding: 12px 8px; font-size: 0.91rem; } .sc-table { font-size: 0.91rem; } .sc-table th, .sc-table td { padding: 9px 8px; } }
   </style>
 </head>
@@ -82,6 +92,7 @@
       </section>
       <section class="report-section">
         <label for="reportText">Alterar Relatório</label>
+        <div id="scReportPending" class="sc-pending" hidden><span id="scReportMessage" role="status"></span><button id="scCancelReport" type="button">Cancelar</button></div>
         <textarea id="reportText" spellcheck="true" disabled placeholder="As informações da carga aparecerão aqui."></textarea>
       </section>
       <footer class="footer-actions">
@@ -93,8 +104,10 @@
 
     <section id="scPanelCriteria" class="sc-criteria" role="tabpanel" aria-labelledby="scTabCriteria" hidden>
       <h1>Critérios de Análise</h1>
-      <small style="color:#64748b">Revisão 04 — ordem alfabética e sessão persistente</small>
+      <small style="color:#64748b">Revisão 05 — seleção de comentários</small>
       <p>Critérios e justificativas para comentário durante a análise das imagens radiográficas.</p>
+      <p>Clique em um critério para selecionar sua justificativa. Apenas a última escolha será guardada. Volte à Página Principal quando desejar e clique no local de inserção em Alterar Relatório.</p>
+      <div id="scCriteriaPending" class="sc-pending" hidden><span id="scCriteriaMessage" role="status"></span><button id="scCancelCriteria" type="button">Cancelar</button></div>
       <div class="sc-table-wrap">
         <table class="sc-table">
           <thead><tr><th scope="col">Critério</th><th scope="col">Justificativa para Comentário</th></tr></thead>
@@ -246,5 +259,93 @@
     })();
   </script>
   <script src="script.js?v=20260923-25"></script>
+  <script>
+    (() => {
+      const report = document.getElementById('reportText');
+      const criteria = document.querySelector('#scPanelCriteria table tbody');
+      const reportBanner = document.getElementById('scReportPending');
+      const criteriaBanner = document.getElementById('scCriteriaPending');
+      let pending = null;
+      function refresh() {
+        reportBanner.hidden = criteriaBanner.hidden = !pending;
+        report.classList.toggle('sc-insert-ready', Boolean(pending));
+        for (const row of criteria.rows) {
+          row.classList.toggle('sc-selected', pending?.row === row);
+          row.setAttribute('aria-pressed', String(pending?.row === row));
+          for (const option of row.querySelectorAll('.sc-option')) {
+            option.classList.toggle('sc-selected-option', pending?.option === option);
+            option.setAttribute('aria-pressed', String(pending?.option === option));
+          }
+        }
+        if (pending) {
+          document.getElementById('scCriteriaMessage').textContent = 'Selecionado: ' + pending.name + ' — ' + pending.text;
+          document.getElementById('scReportMessage').textContent = 'Comentário aguardando inserção: ' + pending.text + ' Clique no local desejado do relatório.';
+        }
+      }
+      function cancel() { pending = null; refresh(); }
+      function choose(row, option) {
+        pending = { row, option, name: row.cells[0].textContent.trim(), text: option.textContent.trim() };
+        refresh();
+      }
+      for (const row of criteria.rows) {
+        row.classList.add('sc-choice');
+        row.tabIndex = 0;
+        row.setAttribute('aria-pressed', 'false');
+        const cell = row.cells[1];
+        const options = [...cell.children];
+        if (options.length > 1) {
+          for (const option of options) {
+            option.classList.add('sc-option');
+            option.tabIndex = 0;
+            option.setAttribute('role', 'button');
+            option.setAttribute('aria-pressed', 'false');
+          }
+        }
+        const defaultOption = options[0] || cell;
+        row.addEventListener('click', event => choose(row, event.target.closest('.sc-option') || defaultOption));
+        row.addEventListener('keydown', event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          choose(row, event.target.closest('.sc-option') || defaultOption);
+        });
+      }
+      document.getElementById('scCancelReport').addEventListener('click', cancel);
+      document.getElementById('scCancelCriteria').addEventListener('click', cancel);
+      document.addEventListener('keydown', event => { if (event.key === 'Escape' && pending) cancel(); });
+      // The native textarea positions its caret before the click handler runs.
+      report.addEventListener('click', () => {
+        if (!pending || report.disabled) return;
+        const value = report.value;
+        let pos = report.selectionStart;
+        let end = pos; // never overwrite manually selected text
+        const lineStart = value.lastIndexOf('\n', pos - 1) + 1;
+        const nextNewline = value.indexOf('\n', pos);
+        const lineEnd = nextNewline < 0 ? value.length : nextNewline;
+        const line = value.slice(lineStart, lineEnd);
+        const placeholder = /^BB\d+:\s*(comente \.\.\.)\s*$/.exec(line);
+        if (placeholder) {
+          pos = lineStart + line.indexOf(placeholder[1]);
+          end = pos + placeholder[1].length;
+        } else {
+          // Keep BB identifiers intact if the click falls on their label.
+          const label = /^BB\d+:\s*/.exec(line);
+          if (label && pos < lineStart + label[0].length) pos = end = lineStart + label[0].length;
+        }
+        const before = value.slice(0, pos);
+        const after = value.slice(end);
+        const prefix = before && !/\s$/.test(before) ? ' ' : '';
+        const suffix = after && !/^\s/.test(after) ? ' ' : '';
+        report.setRangeText(prefix + pending.text + suffix, pos, end, 'end');
+        report.dispatchEvent(new Event('input', { bubbles: true }));
+        cancel();
+      });
+      // Discard an unused choice when the active cargo changes or is reset.
+      const currentItem = document.getElementById('currentItem');
+      let cargo = currentItem.textContent;
+      new MutationObserver(() => {
+        if (cargo !== currentItem.textContent) { cargo = currentItem.textContent; cancel(); }
+      }).observe(currentItem, { childList: true, characterData: true, subtree: true });
+    })();
+  </script>
 </body>
 </html>
