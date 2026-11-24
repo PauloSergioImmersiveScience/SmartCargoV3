@@ -95,8 +95,11 @@
         <div id="scReportPending" class="sc-pending" hidden><span id="scReportMessage" role="status"></span><button id="scCancelReport" type="button">Cancelar</button></div>
         <textarea id="reportText" spellcheck="true" disabled placeholder="As informações da carga aparecerão aqui."></textarea>
       </section>
+      <nav class="sc-tabs" aria-label="Navegação inferior do SmartCargo">
+        <button class="sc-tab" id="scBottomAnalysis" type="button" aria-current="page" aria-controls="scPanelAnalysis" aria-selected="true">Página Principal</button>
+        <button class="sc-tab" id="scBottomCriteria" type="button" aria-controls="scPanelCriteria" aria-selected="false">Critérios de Análise</button>
+      </nav>
       <footer class="footer-actions">
-        <button class="secondary-button" type="button" disabled title="Disponível em uma versão futura">Configuração</button>
         <button id="reportButton" class="secondary-button" type="button" disabled>Gerar Relatório</button>
         <span id="currentItem" class="current-item">Nenhuma carga selecionada</span>
       </footer>
@@ -104,7 +107,7 @@
 
     <section id="scPanelCriteria" class="sc-criteria" role="tabpanel" aria-labelledby="scTabCriteria" hidden>
       <h1>Critérios de Análise</h1>
-      <small style="color:#64748b">Revisão 05 — seleção de comentários</small>
+      <small style="color:#64748b">Revisão 06 — navegação inferior</small>
       <p>Critérios e justificativas para comentário durante a análise das imagens radiográficas.</p>
       <p>Clique em um critério para selecionar sua justificativa. Apenas a última escolha será guardada. Volte à Página Principal quando desejar e clique no local de inserção em Alterar Relatório.</p>
       <div id="scCriteriaPending" class="sc-pending" hidden><span id="scCriteriaMessage" role="status"></span><button id="scCancelCriteria" type="button">Cancelar</button></div>
@@ -248,6 +251,14 @@
           const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
           selectTab(next, true);
         });
+      });
+      document.getElementById('scBottomAnalysis').addEventListener('click', () => {
+        selectTab(0, true);
+        tabs[0].scrollIntoView({block: 'start'});
+      });
+      document.getElementById('scBottomCriteria').addEventListener('click', () => {
+        selectTab(1, true);
+        tabs[1].scrollIntoView({block: 'start'});
       });
       let initialTab = 0;
       try { initialTab = sessionStorage.getItem(TAB_KEY) === "1" ? 1 : 0; }
