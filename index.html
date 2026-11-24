@@ -186,6 +186,18 @@
         togglePassword.title = showPassword ? "Ocultar senha" : "Exibir senha";
         passwordInput.focus();
       });
+      const SESSION_KEY = "SmartCargoV3.authenticated";
+      function showApp() {
+        loginError.textContent = "";
+        loginScreen.style.display = "none";
+        loginScreen.hidden = true;
+        appShell.hidden = false;
+        appShell.style.display = "block";
+        passwordInput.value = "";
+      }
+      try {
+        if (sessionStorage.getItem(SESSION_KEY) === "true") showApp();
+      } catch (error) { console.warn("Sessão indisponível", error); }
       loginForm.addEventListener("submit", event => {
         event.preventDefault();
         if (passwordInput.value.trim() !== ACCESS_PASSWORD) {
@@ -194,18 +206,18 @@
           passwordInput.select();
           return;
         }
-        loginError.textContent = "";
-        loginScreen.style.display = "none";
-        loginScreen.hidden = true;
-        appShell.hidden = false;
-        appShell.style.display = "block";
-        passwordInput.value = "";
+        try { sessionStorage.setItem(SESSION_KEY, "true"); }
+        catch (error) { console.warn("Sessão indisponível", error); }
+        showApp();
       });
     })();
     (() => {
       const tabs = [document.getElementById('scTabAnalysis'), document.getElementById('scTabCriteria')];
       const panels = [document.getElementById('scPanelAnalysis'), document.getElementById('scPanelCriteria')];
+      const TAB_KEY = "SmartCargoV3.activeTab";
       function selectTab(index, setFocus = false) {
+        try { sessionStorage.setItem(TAB_KEY, String(index)); }
+        catch (error) { console.warn("Aba não persistida", error); }
         tabs.forEach((tab, i) => {
           const active = i === index;
           tab.setAttribute('aria-selected', String(active));
@@ -223,7 +235,10 @@
           selectTab(next, true);
         });
       });
-      selectTab(0);
+      let initialTab = 0;
+      try { initialTab = sessionStorage.getItem(TAB_KEY) === "1" ? 1 : 0; }
+      catch (error) { console.warn("Aba não recuperada", error); }
+      selectTab(initialTab);
     })();
   </script>
   <script src="script.js?v=20260923-25"></script>
