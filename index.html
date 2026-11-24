@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Interface SmartScanCargo para análise de imagens de raio X e HEMD.">
-  <title>SmartScanCargo</title>
+  <title>SmartCargoV3 - revisão 04</title>
   <link rel="stylesheet" href="style.css?v=20260920-15">
   <style>
     /* Abas adicionais do SmartCargoV3; não altera o CSS principal. */
@@ -93,6 +93,7 @@
 
     <section id="scPanelCriteria" class="sc-criteria" role="tabpanel" aria-labelledby="scTabCriteria" hidden>
       <h1>Critérios de Análise</h1>
+      <small style="color:#64748b">Revisão 04 — ordem alfabética e sessão persistente</small>
       <p>Critérios e justificativas para comentário durante a análise das imagens radiográficas.</p>
       <div class="sc-table-wrap">
         <table class="sc-table">
@@ -239,6 +240,9 @@
       try { initialTab = sessionStorage.getItem(TAB_KEY) === "1" ? 1 : 0; }
       catch (error) { console.warn("Aba não recuperada", error); }
       selectTab(initialTab);
+      const criteriaBody = document.querySelector("#scPanelCriteria table tbody");
+      const collator = new Intl.Collator("pt-BR", { sensitivity: "base" });
+      [...criteriaBody.rows].sort((a,b) => collator.compare(a.cells[0].textContent.trim(), b.cells[0].textContent.trim())).forEach(row => criteriaBody.appendChild(row));
     })();
   </script>
   <script src="script.js?v=20260923-25"></script>
