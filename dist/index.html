@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Interface SmartScanCargo para análise de imagens de raio X e HEMD.">
-  <title>SmartCargoV3 - revisão 05</title>
+  <title>SmartCargoV3 - revisão 16</title>
   <link rel="stylesheet" href="style.css?v=20260920-15">
   <style>
     /* Abas adicionais do SmartCargoV3; não altera o CSS principal. */
@@ -37,6 +37,14 @@
     .sc-pending[hidden] { display: none !important; }
     .sc-pending button { margin-left: 10px; cursor: pointer; }
     #reportText.sc-insert-ready:not(:disabled) { outline: 2px solid #075985; cursor: text; }
+    .sc-edit-tools { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; align-items:center; }
+    .sc-edit-tools button, .sc-editor button { font:inherit; padding:7px 12px; border:1px solid #94a3b8; border-radius:5px; background:#e2e8f0; color:#0f172a; cursor:pointer; }
+    .sc-edit-tools button.sc-save { background:#075985; color:white; }
+    .sc-editor input, .sc-editor textarea { box-sizing:border-box; width:100%; font:inherit; color:#0f172a; background:white; border:1px solid #94a3b8; border-radius:4px; padding:7px; }
+    .sc-editor textarea { min-height:75px; resize:vertical; }
+    .sc-editor .sc-delete { color:white; background:#b91c1c; margin-top:5px; }
+    .sc-editor .sc-edit-option { margin-bottom:10px; }
+    .sc-edit-tools[hidden] { display:none !important; }
     @media (max-width: 600px) { .sc-tab { flex: 1; padding: 12px 8px; font-size: 0.91rem; } .sc-table { font-size: 0.91rem; } .sc-table th, .sc-table td { padding: 9px 8px; } }
   </style>
 </head>
@@ -107,9 +115,18 @@
 
     <section id="scPanelCriteria" class="sc-criteria" role="tabpanel" aria-labelledby="scTabCriteria" hidden>
       <h1>Critérios de Análise</h1>
-      <small style="color:#64748b">Revisão 09 — nome do critério + justificativa</small>
+      <small style="color:#64748b">Revisão 16 — edição de critérios e classificações</small>
       <p>Critérios e justificativas para comentário durante a análise das imagens radiográficas.</p>
       <p>Clique em um critério ou em uma classificação prática para selecionar o comentário correspondente. Apenas a última escolha será guardada. Volte à Página Principal quando desejar e clique no local de inserção em Alterar Relatório.</p>
+      <div class="sc-edit-tools" id="scViewTools"><button type="button" id="scEditStart">Editar critérios</button></div>
+      <div class="sc-edit-tools" id="scEditTools" hidden>
+        <button type="button" id="scAddCriterion">+ Novo critério</button>
+        <button type="button" id="scAddClassification">+ Nova classificação</button>
+        <button type="button" class="sc-save" id="scEditSave">Salvar alterações</button>
+        <button type="button" id="scEditCancel">Cancelar edição</button>
+        <button type="button" id="scEditRestore">Restaurar critérios originais</button>
+      </div>
+      <p id="scEditStatus" role="status" aria-live="polite"></p>
       <div id="scCriteriaPending" class="sc-pending" hidden><span id="scCriteriaMessage" role="status"></span><button id="scCancelCriteria" type="button">Cancelar</button></div>
       <div class="sc-table-wrap">
         <table class="sc-table">
@@ -273,14 +290,15 @@
   <script>
     (() => {
       const report = document.getElementById('reportText');
-      const commentRows = document.querySelectorAll('#scPanelCriteria table tbody tr');
+      const bodies = [...document.querySelectorAll('#scPanelCriteria table tbody')];
+      const commentRows = () => document.querySelectorAll('#scPanelCriteria table tbody tr.sc-choice');
       const reportBanner = document.getElementById('scReportPending');
       const criteriaBanner = document.getElementById('scCriteriaPending');
       let pending = null;
       function refresh() {
         reportBanner.hidden = criteriaBanner.hidden = !pending;
         report.classList.toggle('sc-insert-ready', Boolean(pending));
-        for (const row of commentRows) {
+        for (const row of commentRows()) {
           row.classList.toggle('sc-selected', pending?.row === row);
           row.setAttribute('aria-pressed', String(pending?.row === row));
           for (const option of row.querySelectorAll('.sc-option')) {
@@ -300,7 +318,48 @@
         pending = { row, option, comment: `${name}: ${text}` };
         refresh();
       }
-      for (const row of commentRows) {
+      const STORAGE = 'SmartCargoV3.criteria.v1';
+      const collator = new Intl.Collator('pt-BR', { sensitivity:'base' });
+      const byId = id => document.getElementById(id);
+      const status = message => { byId('scEditStatus').textContent = message; };
+      const originals = bodies.map(body => [...body.rows].map(row => {
+        const cell = row.cells[1];
+        return {name:row.cells[0].textContent.trim(), red:row.cells[0].classList.contains('sc-red'), options:(cell.children.length ? [...cell.children] : [cell]).map(el => ({text:el.textContent.trim(), red:el.classList.contains('sc-red') || el.classList.contains('sc-revision')}))};
+      }));
+      const clone = data => JSON.parse(JSON.stringify(data));
+      let saved = clone(originals), draft = null;
+      try {
+        const raw = localStorage.getItem(STORAGE);
+        if (raw) {
+          const data = JSON.parse(raw);
+          if (!Array.isArray(data) || data.length !== 2 || !data.every(group => Array.isArray(group) && group.every(row => typeof row.name === 'string' && row.name.trim() && Array.isArray(row.options) && row.options.length && row.options.every(o => typeof o.text === 'string' && o.text.trim())))) throw new Error('Dados inválidos');
+          saved = data;
+        }
+      } catch (error) { status('Não foi possível recuperar os critérios personalizados.'); }
+      function make(tag, text, cls) {
+        const el = document.createElement(tag);
+        if (text != null) el.textContent = text;
+        if (cls) el.className = cls;
+        return el;
+      }
+      function button(text, action, cls) {
+        const el = make('button', text, cls); el.type='button'; el.addEventListener('click', action); return el;
+      }
+      function renderView() {
+        bodies.forEach((body, group) => {
+          body.replaceChildren();
+          const rows = group === 0 ? [...saved[group]].sort((a,b)=>collator.compare(a.name,b.name)) : saved[group];
+          for (const item of rows) {
+            const row=body.insertRow(), name=row.insertCell(), cell=row.insertCell();
+            name.textContent=item.name; if(item.red) name.classList.add('sc-red');
+            if(item.options.length===1) { cell.textContent=item.options[0].text; if(item.options[0].red) cell.classList.add('sc-red'); }
+            else for(const option of item.options) cell.append(make('span',option.text,option.red?'sc-revision':'sc-original'));
+          }
+        });
+        bindRows(); refresh();
+      }
+      function bindRows() {
+      for (const row of bodies.flatMap(body => [...body.rows])) {
         row.classList.add('sc-choice');
         row.tabIndex = 0;
         row.setAttribute('aria-pressed', 'false');
@@ -322,6 +381,41 @@
           choose(row, event.target.closest('.sc-option') || defaultOption);
         });
       }
+      }
+      function renderEditor() {
+        bodies.forEach((body, group) => {
+          body.replaceChildren();
+          for (const item of draft[group]) {
+            const row=body.insertRow(); row.className='sc-editor';
+            const name=row.insertCell(), cell=row.insertCell();
+            const input=make('input'); input.type='text'; input.value=item.name; input.setAttribute('aria-label','Nome do critério ou classificação');
+            input.addEventListener('input',()=>{item.name=input.value;}); name.append(input);
+            name.append(button('Excluir item',()=>{if(confirm('Excluir este item e suas justificativas?')) { draft[group].splice(draft[group].indexOf(item),1); renderEditor(); }},'sc-delete'));
+            for (const option of item.options) {
+              const wrap=make('div',null,'sc-edit-option'); const text=make('textarea'); text.value=option.text; text.setAttribute('aria-label','Justificativa ou texto padrão');
+              text.addEventListener('input',()=>{option.text=text.value;}); wrap.append(text);
+              if(item.options.length>1) wrap.append(button('Excluir esta justificativa',()=>{item.options.splice(item.options.indexOf(option),1);renderEditor();},'sc-delete'));
+              cell.append(wrap);
+            }
+            cell.append(button('+ Outra justificativa',()=>{item.options.push({text:'',red:false});renderEditor();}));
+          }
+        });
+      }
+      function setEditing(active) { byId('scViewTools').hidden=active; byId('scEditTools').hidden=!active; }
+      function startEdit() { cancel(); draft=clone(saved); setEditing(true); renderEditor(); status('Modo de edição: salve para aplicar as alterações.'); }
+      function add(group) { draft[group].push({name:'',red:false,options:[{text:'',red:false}]});renderEditor(); const input=bodies[group].lastElementChild.querySelector('input'); input.focus(); input.scrollIntoView({block:'center'}); }
+      byId('scEditStart').addEventListener('click',startEdit);
+      byId('scAddCriterion').addEventListener('click',()=>add(0));
+      byId('scAddClassification').addEventListener('click',()=>add(1));
+      byId('scEditCancel').addEventListener('click',()=>{draft=null;setEditing(false);renderView();status('Edição cancelada.');});
+      byId('scEditRestore').addEventListener('click',()=>{if(confirm('Restaurar os critérios e classificações originais? Clique em Salvar para confirmar.')) {draft=clone(originals);renderEditor();status('Originais recuperados no editor. Salve para confirmar.');}});
+      byId('scEditSave').addEventListener('click',()=>{
+        if(draft.some(group=>group.some(row=>!row.name.trim() || row.options.some(o=>!o.text.trim())))) {status('Preencha todos os nomes e justificativas antes de salvar.');return;}
+        const next=clone(draft); next.forEach(group=>group.forEach(row=>{row.name=row.name.trim();row.options.forEach(o=>o.text=o.text.trim());}));
+        try { localStorage.setItem(STORAGE,JSON.stringify(next)); } catch(error) {status('Não foi possível salvar no navegador. As alterações continuam no editor.');return;}
+        saved=next; draft=null;setEditing(false);renderView();status('Alterações salvas neste navegador.');
+      });
+      renderView();
       document.getElementById('scCancelReport').addEventListener('click', cancel);
       document.getElementById('scCancelCriteria').addEventListener('click', cancel);
       document.addEventListener('keydown', event => { if (event.key === 'Escape' && pending) cancel(); });
