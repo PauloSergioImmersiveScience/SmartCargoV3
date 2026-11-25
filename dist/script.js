@@ -572,6 +572,8 @@ function openBoxPreview(boxIndex, source) {
     button:hover { background: #1d4ed8; }
     button:disabled { border-color: #475569; background: #334155; color: #94a3b8; cursor: not-allowed; }
     button.active { border-color: #facc15; background: #b45309; }
+    #negativeRegion:not(:disabled) { border-color: #f87171; background: #dc2626; color: #fff; }
+    #negativeRegion:not(:disabled):hover { background: #b91c1c; }
     .preview { position: relative; min-width: 0; min-height: 0; overflow: scroll; scrollbar-gutter: stable; cursor: default; outline: none; }
     .preview-stage { position: relative; display: grid; place-items: center; min-width: 100%; min-height: 100%; }
     img { display: block; max-width: none; max-height: none; image-rendering: auto; user-select: none; -webkit-user-drag: none; }
@@ -586,6 +588,7 @@ function openBoxPreview(boxIndex, source) {
       <span id="zoomStatus">Zoom: 100% · roda: zoom no cursor · barras: navegação</span>
       <button id="undoEqualization" type="button" disabled>Desfazer equalização</button>
       <button id="equalizeVisible" type="button">Equalização</button>
+      <button id="negativeRegion" type="button" disabled>Negativo</button>
     </div>
   </header>
   <div class="preview" tabindex="0">
@@ -601,6 +604,7 @@ function openBoxPreview(boxIndex, source) {
   const zoomStatus = popup.document.querySelector("#zoomStatus");
   const equalizeVisibleButton = popup.document.querySelector("#equalizeVisible");
   const undoEqualizationButton = popup.document.querySelector("#undoEqualization");
+  const negativeRegionButton = popup.document.querySelector("#negativeRegion");
   const localSelection = popup.document.querySelector("#localSelection");
   const previewContext = preview.getContext("2d", { willReadFrequently: true });
   const equalizationHistory = [];
@@ -712,6 +716,7 @@ function openBoxPreview(boxIndex, source) {
     previewContext.putImageData(equalizeRegion(equalizedPixels), sourceX, sourceY);
     previewImage.src = preview.toDataURL("image/png");
     undoEqualizationButton.disabled = false;
+    negativeRegionButton.disabled = false;
     return true;
   };
 
@@ -801,12 +806,29 @@ function openBoxPreview(boxIndex, source) {
 
   equalizeVisibleButton.addEventListener("click", () => setEqualizationMode(!equalizationMode));
 
+  negativeRegionButton.addEventListener("click", () => {
+    const lastRegion = equalizationHistory[equalizationHistory.length - 1];
+    if (!lastRegion) return;
+    const pixels = previewContext.getImageData(
+      lastRegion.x, lastRegion.y, lastRegion.pixels.width, lastRegion.pixels.height
+    );
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      pixels.data[i] = 255 - pixels.data[i];
+      pixels.data[i + 1] = 255 - pixels.data[i + 1];
+      pixels.data[i + 2] = 255 - pixels.data[i + 2];
+    }
+    previewContext.putImageData(pixels, lastRegion.x, lastRegion.y);
+    previewImage.src = preview.toDataURL("image/png");
+    previewArea.focus();
+  });
+
   undoEqualizationButton.addEventListener("click", () => {
     const lastEqualization = equalizationHistory.pop();
     if (!lastEqualization) return;
     previewContext.putImageData(lastEqualization.pixels, lastEqualization.x, lastEqualization.y);
     previewImage.src = preview.toDataURL("image/png");
     undoEqualizationButton.disabled = equalizationHistory.length === 0;
+    negativeRegionButton.disabled = equalizationHistory.length === 0;
     updateStatus();
     previewArea.focus();
   });
