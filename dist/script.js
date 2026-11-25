@@ -583,7 +583,7 @@ function openBoxPreview(boxIndex, source) {
   <header>
     <strong>BB${boxIndex + 1} — ${sourceLabel}</strong>
     <div class="header-actions">
-      <span id="zoomStatus">Zoom: 100% · roda: zoom · barras: navegação</span>
+      <span id="zoomStatus">Zoom: 100% · roda: zoom no cursor · barras: navegação</span>
       <button id="undoEqualization" type="button" disabled>Desfazer equalização</button>
       <button id="equalizeVisible" type="button">Equalização</button>
     </div>
@@ -615,15 +615,18 @@ function openBoxPreview(boxIndex, source) {
   const updateStatus = () => {
     zoomStatus.textContent = `Zoom: ${Math.round(zoom * 100)}% · equalizações: ${equalizationHistory.length}${equalizationMode ? " · Desenhe a área" : " · barras: navegação"}`;
   };
-  const updatePreviewTransform = (resetCenter = false) => {
-    // Anchor zoom to the image point currently at the viewport center.
+  const updatePreviewTransform = (resetCenter = false, cursor = null) => {
+    // Keep the image point under the mouse fixed during wheel zoom.
+    // Initialization and double click center the image; resize uses viewport center.
     const oldViewport = previewArea.getBoundingClientRect();
     const oldImage = previewImage.getBoundingClientRect();
     const clamp01 = value => Math.max(0, Math.min(1, value));
-    const anchorX = resetCenter || !oldImage.width ? 0.5 : clamp01(
-      (oldViewport.left + previewArea.clientLeft + previewArea.clientWidth / 2 - oldImage.left) / oldImage.width);
-    const anchorY = resetCenter || !oldImage.height ? 0.5 : clamp01(
-      (oldViewport.top + previewArea.clientTop + previewArea.clientHeight / 2 - oldImage.top) / oldImage.height);
+    const left = oldViewport.left + previewArea.clientLeft;
+    const top = oldViewport.top + previewArea.clientTop;
+    const offsetX = !resetCenter && cursor ? Math.max(0, Math.min(previewArea.clientWidth, cursor.clientX - left)) : previewArea.clientWidth / 2;
+    const offsetY = !resetCenter && cursor ? Math.max(0, Math.min(previewArea.clientHeight, cursor.clientY - top)) : previewArea.clientHeight / 2;
+    const anchorX = resetCenter || !oldImage.width ? 0.5 : clamp01((left + offsetX - oldImage.left) / oldImage.width);
+    const anchorY = resetCenter || !oldImage.height ? 0.5 : clamp01((top + offsetY - oldImage.top) / oldImage.height);
     const w = previewArea.clientWidth;
     const h = previewArea.clientHeight;
     const fit = Math.min(Math.max(1, w - 24) / preview.width, Math.max(1, h - 24) / preview.height);
@@ -636,9 +639,9 @@ function openBoxPreview(boxIndex, source) {
     const newViewport = previewArea.getBoundingClientRect();
     const newImage = previewImage.getBoundingClientRect();
     previewArea.scrollLeft += newImage.left + anchorX * newImage.width -
-      (newViewport.left + previewArea.clientLeft + previewArea.clientWidth / 2);
+      (newViewport.left + previewArea.clientLeft + offsetX);
     previewArea.scrollTop += newImage.top + anchorY * newImage.height -
-      (newViewport.top + previewArea.clientTop + previewArea.clientHeight / 2);
+      (newViewport.top + previewArea.clientTop + offsetY);
     updateStatus();
   };
 
@@ -715,10 +718,12 @@ function openBoxPreview(boxIndex, source) {
   previewArea.addEventListener("click", () => previewArea.focus());
   previewArea.addEventListener("wheel", event => {
     event.preventDefault();
-    if (selectingEqualization) return;
+    if (selectingEqualization || event.deltaY === 0) return;
     const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
-    zoom = Math.max(0.25, Math.min(12, zoom * factor));
-    updatePreviewTransform();
+    const nextZoom = Math.max(0.25, Math.min(12, zoom * factor));
+    if (nextZoom === zoom) return;
+    zoom = nextZoom;
+    updatePreviewTransform(false, event);
   }, { passive: false });
 
   previewArea.addEventListener("pointerdown", event => {
